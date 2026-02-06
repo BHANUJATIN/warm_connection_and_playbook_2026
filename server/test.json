@@ -1,0 +1,26 @@
+{
+    "unique_key": "company.domain",
+    "company_domain": "company.domain",
+    "company_linkedin": "https://www.linkedin.com/company/example-company",
+    "company_name": "Example Company",
+    "data": {
+        "name": "Example Person",
+        "first name": "Example",
+        "last name": "Person",
+        "Linkedin": "1234 Example St, Example City, EX 12345",
+        "connections": [
+            {
+            "connection_type": "warm",
+            "connected_to": "https://www.linkedin.com/in/example-person",
+            "summary": "Met at a conference in 2022 and had several follow-up meetings."
+
+            },
+            {
+            "connection_type": "weak warm",
+            "connected_to": "https://www.linkedin.com/in/example-person",
+            "summary": "Connected through mutual contacts and had brief interactions."
+            }
+        ]
+            
+    }
+}
