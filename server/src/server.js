@@ -17,10 +17,32 @@ import testPlaybook from './routes/testPlaybook.js'
 const app = express();
 app.use(express.json());
 
+// Default allowed origins
+const defaultOrigins = [
+  "http://localhost:3001",
+  "http://localhost:3000",
+  "https://warm-connection-and-playbook-2026.vercel.app",
+  "https://email-sequence-finder-2026.onrender.com"
+];
+
+// Allow additional origins from environment variable (comma-separated)
+const envOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : [];
+
+const allowedOrigins = [...defaultOrigins, ...envOrigins];
+
 app.use(cors({
-  origin: "http://localhost:3001",
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"]
+  allowedHeaders: ["Content-Type"],
+  credentials: true
 }));
 
 app.use("/webhooks", clayWebhook);
