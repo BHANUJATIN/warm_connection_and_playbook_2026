@@ -35,9 +35,10 @@ type ResultViewProps = {
     warm_connections: WarmConnection[];
     sales_playbook: SalesPlaybook;
   };
+  domain?: string;
 };
 
-export default function ResultView({ result }: ResultViewProps) {
+export default function ResultView({ result, domain }: ResultViewProps) {
   const { warm_connections, sales_playbook } = result;
 
   return (

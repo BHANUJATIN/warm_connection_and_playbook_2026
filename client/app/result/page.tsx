@@ -1,15 +1,15 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { API_BASE } from "@/lib/api";
 import ResultView from "@/components/ResultView";
 import LoadingState from "@/components/LoadingState";
 
-export default function ResultPage() {
+function ResultContent() {
   const searchParams = useSearchParams();
   const domain = searchParams.get("domain");
-  
+
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +24,7 @@ export default function ResultPage() {
     const fetchResult = async () => {
       try {
         const res = await fetch(`${API_BASE}/result?domain=${encodeURIComponent(domain)}`);
-        
+
         if (!res.ok) {
           const errorText = await res.text();
           console.error(`Backend error (${res.status}):`, errorText);
@@ -65,4 +65,12 @@ export default function ResultPage() {
   }
 
   return <ResultView result={data.result} domain={domain} />;
+}
+
+export default function ResultPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <ResultContent />
+    </Suspense>
+  );
 }
