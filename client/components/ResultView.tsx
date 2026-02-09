@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 
 type WarmConnection = {
   prospect_person_name: string;
@@ -50,6 +50,13 @@ function linkedinName(url: string): string {
     .join(" ");
 }
 
+function extractCommonEntity(summary: string | null | undefined): string {
+  if (!summary) return "";
+  // Match patterns like "Both worked at Apple" or "Both studied at MIT"
+  const match = summary.match(/Both (?:worked|studied|volunteered|interned) at ([^.,;]+)/i);
+  return match ? match[1].trim() : "";
+}
+
 function connectionTypeBadge(type: string) {
   const lower = type.toLowerCase();
   if (lower.includes("1st") || lower.includes("first")) {
@@ -91,8 +98,21 @@ export default function ResultView({ result, domain }: ResultViewProps) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
 
-  // Count connection types
-  const typeCounts = warm_connections.reduce<Record<string, number>>((acc, c) => {
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 25;
+
+  // Draft outbound modal
+  const [draftConn, setDraftConn] = useState<WarmConnection | null>(null);
+
+  // Filter out Self-Employed rows globally
+  const validConnections = useMemo(
+    () => warm_connections.filter((c) => !(c.summary || "").toLowerCase().includes("self-employed")),
+    [warm_connections]
+  );
+
+  // Count connection types (after Self-Employed filter)
+  const typeCounts = validConnections.reduce<Record<string, number>>((acc, c) => {
     const t = c.connection_type || "Unknown";
     acc[t] = (acc[t] || 0) + 1;
     return acc;
@@ -102,7 +122,7 @@ export default function ResultView({ result, domain }: ResultViewProps) {
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
 
-    let list = warm_connections.filter((conn) => {
+    let list = validConnections.filter((conn) => {
       // Type filter
       if (typeFilter && (conn.connection_type || "Unknown") !== typeFilter) return false;
 
@@ -135,7 +155,16 @@ export default function ResultView({ result, domain }: ResultViewProps) {
     });
 
     return list;
-  }, [warm_connections, search, sortKey, sortDir, typeFilter]);
+  }, [validConnections, search, sortKey, sortDir, typeFilter]);
+
+  // Pagination helpers
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  // Reset to page 1 when filters change
+  const handleSearch = useCallback((v: string) => { setSearch(v); setCurrentPage(1); }, []);
+  const handleTypeFilter = useCallback((type: string | null) => { setTypeFilter(type); setCurrentPage(1); }, []);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -181,15 +210,15 @@ export default function ResultView({ result, domain }: ResultViewProps) {
         {/* Stats + type filter chips */}
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className="inline-flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-4 py-2.5 shadow-sm">
-            <div className={`w-2 h-2 rounded-full ${warm_connections.length > 0 ? "bg-emerald-500" : "bg-slate-300"}`} />
+            <div className={`w-2 h-2 rounded-full ${validConnections.length > 0 ? "bg-emerald-500" : "bg-slate-300"}`} />
             <span className="text-sm font-medium text-slate-700">
-              {warm_connections.length} connection{warm_connections.length !== 1 ? "s" : ""} found
+              {validConnections.length} connection{validConnections.length !== 1 ? "s" : ""} found
             </span>
           </div>
           {Object.entries(typeCounts).map(([type, count]) => (
             <button
               key={type}
-              onClick={() => setTypeFilter(typeFilter === type ? null : type)}
+              onClick={() => handleTypeFilter(typeFilter === type ? null : type)}
               className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border cursor-pointer transition-all duration-200 ${
                 typeFilter === type
                   ? "ring-2 ring-slate-900/20 shadow-sm " + connectionTypeBadge(type)
@@ -209,7 +238,7 @@ export default function ResultView({ result, domain }: ResultViewProps) {
         </div>
 
         {/* Search bar */}
-        {warm_connections.length > 0 && (
+        {validConnections.length > 0 && (
           <div className="mb-6">
             <div className="relative max-w-sm">
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-700 pointer-events-none">
@@ -219,7 +248,7 @@ export default function ResultView({ result, domain }: ResultViewProps) {
               </div>
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => handleSearch(e.target.value)}
                 placeholder="Search by name, company, keyword..."
                 className="w-full border border-slate-200 rounded-lg pl-9 pr-9 py-2.5 text-sm bg-white
                            focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent
@@ -227,7 +256,7 @@ export default function ResultView({ result, domain }: ResultViewProps) {
               />
               {search && (
                 <button
-                  onClick={() => setSearch("")}
+                  onClick={() => handleSearch("")}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
@@ -238,7 +267,7 @@ export default function ResultView({ result, domain }: ResultViewProps) {
             </div>
             {(search || typeFilter) && (
               <p className="text-xs text-slate-400 mt-2">
-                Showing {filtered.length} of {warm_connections.length} connection{warm_connections.length !== 1 ? "s" : ""}
+                Showing {filtered.length} of {validConnections.length} connection{validConnections.length !== 1 ? "s" : ""}
                 {typeFilter && <span> &middot; Type: {typeFilter}</span>}
                 {search && <span> &middot; Search: &ldquo;{search}&rdquo;</span>}
               </p>
@@ -247,7 +276,7 @@ export default function ResultView({ result, domain }: ResultViewProps) {
         )}
 
         {/* No results */}
-        {warm_connections.length === 0 ? (
+        {validConnections.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-xl p-16 text-center shadow-sm">
             <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-5">
               <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
@@ -281,7 +310,7 @@ export default function ResultView({ result, domain }: ResultViewProps) {
               Try adjusting your search or clearing the filter.
             </p>
             <button
-              onClick={() => { setSearch(""); setTypeFilter(null); }}
+              onClick={() => { handleSearch(""); handleTypeFilter(null); }}
               className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
             >
               Clear Filters
@@ -296,37 +325,41 @@ export default function ResultView({ result, domain }: ResultViewProps) {
                   <tr className="border-b border-slate-100 bg-slate-50/80">
                     <th
                       onClick={() => toggleSort("name")}
-                      className="text-left py-3.5 px-4 font-medium text-slate-500 text-xs uppercase tracking-wider w-[22%] cursor-pointer hover:text-slate-700 transition-colors select-none"
+                      className="text-left py-3.5 px-4 font-medium text-slate-500 text-xs uppercase tracking-wider w-[20%] cursor-pointer hover:text-slate-700 transition-colors select-none"
                     >
                       Prospect
                       <SortIcon active={sortKey === "name"} dir={sortKey === "name" ? sortDir : "asc"} />
                     </th>
-                    <th className="text-left py-3.5 px-4 font-medium text-slate-500 text-xs uppercase tracking-wider w-[20%]">
+                    <th className="text-left py-3.5 px-4 font-medium text-slate-500 text-xs uppercase tracking-wider w-[17%]">
                       Prospect LinkedIn
                     </th>
-                    <th className="text-left py-3.5 px-4 font-medium text-slate-500 text-xs uppercase tracking-wider w-[20%]">
+                    <th className="text-left py-3.5 px-4 font-medium text-slate-500 text-xs uppercase tracking-wider w-[17%]">
                       Exa Connection
                     </th>
                     <th
                       onClick={() => toggleSort("type")}
-                      className="text-left py-3.5 px-4 font-medium text-slate-500 text-xs uppercase tracking-wider w-[12%] cursor-pointer hover:text-slate-700 transition-colors select-none"
+                      className="text-left py-3.5 px-4 font-medium text-slate-500 text-xs uppercase tracking-wider w-[10%] cursor-pointer hover:text-slate-700 transition-colors select-none"
                     >
                       Type
                       <SortIcon active={sortKey === "type"} dir={sortKey === "type" ? sortDir : "asc"} />
                     </th>
-                    <th className="text-left py-3.5 px-4 font-medium text-slate-500 text-xs uppercase tracking-wider">
+                    <th className="text-left py-3.5 px-4 font-medium text-slate-500 text-xs uppercase tracking-wider w-[26%]">
                       Summary
+                    </th>
+                    <th className="text-left py-3.5 px-4 font-medium text-slate-500 text-xs uppercase tracking-wider w-[10%]">
+                      Action
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {filtered.map((conn, idx) => {
-                    const isExpanded = expandedIdx === idx;
+                  {paginatedRows.map((conn, idx) => {
+                    const globalIdx = (safePage - 1) * pageSize + idx;
+                    const isExpanded = expandedIdx === globalIdx;
                     const hasSummary = !!conn.summary;
 
                     return (
                       <tr
-                        key={idx}
+                        key={globalIdx}
                         className="hover:bg-slate-50/80 transition-colors"
                         style={{ animation: `slideUp 0.3s ease-out ${idx * 0.03}s both` }}
                       >
@@ -408,7 +441,7 @@ export default function ResultView({ result, domain }: ResultViewProps) {
                                 {conn.summary}
                               </span>
                               <button
-                                onClick={() => setExpandedIdx(isExpanded ? null : idx)}
+                                onClick={() => setExpandedIdx(isExpanded ? null : globalIdx)}
                                 className="block text-xs text-blue-600 hover:text-blue-800 mt-1 font-medium transition-colors"
                               >
                                 {isExpanded ? "Show less" : "Show more"}
@@ -418,6 +451,19 @@ export default function ResultView({ result, domain }: ResultViewProps) {
                             <span className="text-slate-300">&mdash;</span>
                           )}
                         </td>
+
+                        {/* Draft Outbound */}
+                        <td className="py-3.5 px-4">
+                          <button
+                            onClick={() => setDraftConn(conn)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-all duration-200 shadow-sm"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                            </svg>
+                            Draft
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -425,14 +471,149 @@ export default function ResultView({ result, domain }: ResultViewProps) {
               </table>
             </div>
 
-            {/* Table footer */}
+            {/* Pagination footer */}
             <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-3 flex items-center justify-between">
               <span className="text-xs text-slate-400">
-                Showing {filtered.length}{filtered.length !== warm_connections.length ? ` of ${warm_connections.length}` : ""} result{filtered.length !== 1 ? "s" : ""}
+                Showing {(safePage - 1) * pageSize + 1}&ndash;{Math.min(safePage * pageSize, filtered.length)} of {filtered.length} result{filtered.length !== 1 ? "s" : ""}
               </span>
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={safePage <= 1}
+                    className="px-2.5 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Prev
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((p) => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                    .reduce<(number | "dots")[]>((acc, p, i, arr) => {
+                      if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push("dots");
+                      acc.push(p);
+                      return acc;
+                    }, [])
+                    .map((item, i) =>
+                      item === "dots" ? (
+                        <span key={`dots-${i}`} className="px-1.5 text-xs text-slate-400">&hellip;</span>
+                      ) : (
+                        <button
+                          key={item}
+                          onClick={() => setCurrentPage(item as number)}
+                          className={`px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                            safePage === item
+                              ? "bg-slate-900 text-white border-slate-900"
+                              : "text-slate-600 bg-white border-slate-200 hover:bg-slate-50"
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      )
+                    )}
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={safePage >= totalPages}
+                    className="px-2.5 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
               <span className="text-xs text-slate-400">
                 Data sourced from LinkedIn via Clay
               </span>
+            </div>
+          </div>
+        )}
+
+        {/* Draft Outbound Modal */}
+        {draftConn && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setDraftConn(null)}>
+            <div
+              className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg mx-4 overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                <h2 className="text-base font-semibold text-slate-900">Draft Outbound Messages</h2>
+                <button onClick={() => setDraftConn(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="px-6 py-5 space-y-5">
+                {(() => {
+                  const prospectFirst = draftConn.prospect_person_first_name || getDisplayName(draftConn).split(" ")[0] || "there";
+                  const exaName = linkedinName(draftConn.exa_person_linkedin);
+                  const commonEntity = extractCommonEntity(draftConn.summary);
+                  const targetCompany = draftConn.prospect_company_name || domain || "your company";
+
+                  // Determine relation type from summary
+                  const summaryLower = (draftConn.summary || "").toLowerCase();
+                  let relation = "connection";
+                  if (summaryLower.includes("studied at")) relation = "alumni";
+                  else if (summaryLower.includes("worked at")) relation = "alum";
+
+                  const connectionMsg = commonEntity
+                    ? `Hey ${prospectFirst}, ${exaName} here! Fellow ${commonEntity} ${relation} — how's it going at ${targetCompany}?`
+                    : `Hey ${prospectFirst}, ${exaName} here! Would love to connect — how's it going at ${targetCompany}?`;
+
+                  const followUpMsg = commonEntity
+                    ? `Hi ${prospectFirst}, just following up! As a fellow ${commonEntity} ${relation}, I'd love to chat about what you're building at ${targetCompany}. Would you be open to a quick call?`
+                    : `Hi ${prospectFirst}, just following up! I'd love to chat about what you're building at ${targetCompany}. Would you be open to a quick call?`;
+
+                  return (
+                    <>
+                      {/* Connection Request */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Connection Request</label>
+                          <button
+                            onClick={() => navigator.clipboard.writeText(connectionMsg)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 text-sm text-slate-700 leading-relaxed">
+                          {connectionMsg}
+                        </div>
+                      </div>
+
+                      {/* Follow-up Message */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Follow-up Message</label>
+                          <button
+                            onClick={() => navigator.clipboard.writeText(followUpMsg)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 text-sm text-slate-700 leading-relaxed">
+                          {followUpMsg}
+                        </div>
+                      </div>
+
+                      {/* Context */}
+                      {draftConn.summary && (
+                        <div className="pt-2 border-t border-slate-100">
+                          <p className="text-xs text-slate-400 mb-1 font-medium">Connection context</p>
+                          <p className="text-xs text-slate-500 leading-relaxed">{draftConn.summary}</p>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+              <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+                <button
+                  onClick={() => setDraftConn(null)}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         )}
