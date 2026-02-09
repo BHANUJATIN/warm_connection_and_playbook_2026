@@ -1,7 +1,7 @@
 // jobsRepo.js
 
 import { pool } from "./index.js";
-import { CLAY_IDLE_TIMEOUT_MS } from "../config.js";
+import { CLAY_IDLE_TIMEOUT_MS, JOB_MAX_TTL_MS } from "../config.js";
 import { v4 as uuid } from "uuid";
 // PLAYBOOK DISABLED: keeping import for future use
 // import { hasPlaybook } from "./playbookRepo.js";
@@ -122,6 +122,13 @@ export async function tryCompleteJob(jobId) {
     console.error('Job reconciliation failed:', e);
   }
 
+  // Auto-complete if job has exceeded max TTL (Clay never responded)
+  const now = Date.now();
+  const jobCreated = new Date(job.created_at).getTime();
+  if (now - jobCreated >= JOB_MAX_TTL_MS) {
+    return job;
+  }
+
   // Only warm connections need to be ready now
   if (!job.warm_connections_ready) {
     return null;
@@ -137,7 +144,6 @@ export async function tryCompleteJob(jobId) {
     return null;
   }
 
-  const now = Date.now();
   const lastEvent = new Date(job.last_clay_event_at).getTime();
 
   if (now - lastEvent < CLAY_IDLE_TIMEOUT_MS) {
