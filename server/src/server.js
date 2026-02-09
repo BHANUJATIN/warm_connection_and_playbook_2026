@@ -1,18 +1,24 @@
 // server.js
 import dotenv from "dotenv";
-dotenv.config(); // MUST be first
-import cors from "cors";
-import express from "express";
+import { fileURLToPath } from "url";
+import path from "path";
 
-// force DB init AFTER env is loaded
-import "./db/index.js";
-import playbookWebhook from "./routes/playbookWebhook.js";
-import clayWebhook from "./routes/clayWebhook.js";
-import jobsRouter from "./routes/jobs.js";
-import resultRouter from "./routes/result.js";
-import testPlaybook from './routes/testPlaybook.js'
+// Resolve .env relative to this file (server/.env), not cwd
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
-
+// Dynamic imports so they run AFTER dotenv has loaded env vars
+// (ES module static imports are hoisted and run before any code)
+const { default: cors } = await import("cors");
+const { default: express } = await import("express");
+await import("./db/index.js");
+// PLAYBOOK DISABLED
+// const { default: playbookWebhook } = await import("./routes/playbookWebhook.js");
+const { default: clayWebhook } = await import("./routes/clayWebhook.js");
+const { default: jobsRouter } = await import("./routes/jobs.js");
+const { default: resultRouter } = await import("./routes/result.js");
+// PLAYBOOK DISABLED
+// const { default: testPlaybook } = await import('./routes/testPlaybook.js');
 
 const app = express();
 app.use(express.json());
@@ -53,8 +59,9 @@ app.get("/health", (_, res) => {
   res.json({ status: "ok" });
 });
 
-app.use("/test/playbook", testPlaybook);
-app.use("/webhooks/playbook", playbookWebhook);
+// PLAYBOOK DISABLED
+// app.use("/test/playbook", testPlaybook);
+// app.use("/webhooks/playbook", playbookWebhook);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

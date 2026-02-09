@@ -77,3 +77,17 @@ export async function hasWarmConnections(domain) {
 
   return rows.length > 0;
 }
+
+export async function getWarmConnections(domain) {
+  const { rows } = await pool.query(
+    `
+    SELECT *
+    FROM warm_connections
+    WHERE prospect_domain = $1
+    ORDER BY created_at DESC
+    `,
+    [domain]
+  );
+
+  return rows;
+}

@@ -1,5 +1,6 @@
 import express from "express";
-import { getPlaybook } from "../db/playbookRepo.js";
+// PLAYBOOK DISABLED
+// import { getPlaybook } from "../db/playbookRepo.js";
 import { pool } from "../db/index.js";
 
 const router = express.Router();
@@ -18,20 +19,22 @@ router.get("/", async (req, res) => {
       SELECT *
       FROM warm_connections
       WHERE prospect_domain = $1
+      ORDER BY created_at DESC
       `,
       [domain]
     );
 
-    // Fetch playbook
-    const playbookRow = await getPlaybook(domain);
+    // PLAYBOOK DISABLED
+    // const playbookRow = await getPlaybook(domain);
 
-    // Return merged result
+    // Return result (warm connections only)
     res.json({
       status: "completed",
       domain,
       result: {
         warm_connections: warmRows,
-        sales_playbook: playbookRow?.data || null
+        // PLAYBOOK DISABLED
+        // sales_playbook: playbookRow?.data || null
       }
     });
   } catch (err) {

@@ -3,7 +3,8 @@
 import { pool } from "./index.js";
 import { CLAY_IDLE_TIMEOUT_MS } from "../config.js";
 import { v4 as uuid } from "uuid";
-import { hasPlaybook } from "./playbookRepo.js";
+// PLAYBOOK DISABLED: keeping import for future use
+// import { hasPlaybook } from "./playbookRepo.js";
 import { hasWarmConnections } from "./warmRepo.js";
 
 /**
@@ -27,19 +28,20 @@ export async function touchClayEvent(domain) {
 /**
  * Mark playbook readiness
  */
-export async function markPlaybookReady(domain) {
-  await pool.query(
-    `
-    UPDATE jobs
-    SET
-      playbook_ready = TRUE,
-      stage = 'merging'
-    WHERE prospect_domain = $1
-      AND status = 'running'
-    `,
-    [domain]
-  );
-}
+// PLAYBOOK DISABLED: keeping function for future use
+// export async function markPlaybookReady(domain) {
+//   await pool.query(
+//     `
+//     UPDATE jobs
+//     SET
+//       playbook_ready = TRUE,
+//       stage = 'merging'
+//     WHERE prospect_domain = $1
+//       AND status = 'running'
+//     `,
+//     [domain]
+//   );
+// }
 
 /**
  * Fetch job by id
@@ -75,7 +77,8 @@ export async function getJobByDomain(domain) {
 }
 
 /**
- * Check if job is eligible for completion
+ * Check if job is eligible for completion.
+ * Now only requires warm_connections to be ready (playbook disabled).
  */
 export async function tryCompleteJob(jobId) {
   const { rows } = await pool.query(
@@ -91,20 +94,8 @@ export async function tryCompleteJob(jobId) {
   const job = rows[0];
   if (!job) return null;
 
-  // Reconcile authoritative sources: if playbook or warm connections
-  // exist in their tables, update the job flags so completion can proceed.
+  // Reconcile: if warm connections exist in DB but flag not set, update it
   try {
-    if (!job.playbook_ready) {
-      const exists = await hasPlaybook(job.prospect_domain);
-      if (exists) {
-        await pool.query(
-          `UPDATE jobs SET playbook_ready = TRUE WHERE id = $1`,
-          [job.id]
-        );
-        job.playbook_ready = true;
-      }
-    }
-
     if (!job.warm_connections_ready) {
       const existsWarm = await hasWarmConnections(job.prospect_domain);
       if (existsWarm) {
@@ -115,17 +106,33 @@ export async function tryCompleteJob(jobId) {
         job.warm_connections_ready = true;
       }
     }
+
+    // PLAYBOOK DISABLED: reconciliation for playbook
+    // if (!job.playbook_ready) {
+    //   const exists = await hasPlaybook(job.prospect_domain);
+    //   if (exists) {
+    //     await pool.query(
+    //       `UPDATE jobs SET playbook_ready = TRUE WHERE id = $1`,
+    //       [job.id]
+    //     );
+    //     job.playbook_ready = true;
+    //   }
+    // }
   } catch (e) {
-    // If reconciliation fails, log and continue with existing job state
     console.error('Job reconciliation failed:', e);
   }
 
-  // both data sources must be ready
-  if (!job.warm_connections_ready || !job.playbook_ready) {
+  // Only warm connections need to be ready now
+  if (!job.warm_connections_ready) {
     return null;
   }
 
-  // clay inactivity window
+  // PLAYBOOK DISABLED: no longer require playbook_ready
+  // if (!job.playbook_ready) {
+  //   return null;
+  // }
+
+  // clay inactivity window - wait for Clay to finish sending all connections
   if (!job.last_clay_event_at) {
     return null;
   }
@@ -141,7 +148,7 @@ export async function tryCompleteJob(jobId) {
 }
 
 /**
- * Complete job and merge results
+ * Complete job and merge results (warm connections only)
  */
 export async function completeJobWithMerge(job) {
   const { rows: warmRows } = await pool.query(
@@ -153,18 +160,20 @@ export async function completeJobWithMerge(job) {
     [job.prospect_domain]
   );
 
-  const { rows: playbookRows } = await pool.query(
-    `
-    SELECT data
-    FROM email_playbooks
-    WHERE prospect_domain = $1
-    `,
-    [job.prospect_domain]
-  );
+  // PLAYBOOK DISABLED: no longer fetching playbook data
+  // const { rows: playbookRows } = await pool.query(
+  //   `
+  //   SELECT data
+  //   FROM email_playbooks
+  //   WHERE prospect_domain = $1
+  //   `,
+  //   [job.prospect_domain]
+  // );
 
   const mergedResult = {
     warm_connections: warmRows,
-    sales_playbook: playbookRows[0]?.data || null
+    // PLAYBOOK DISABLED
+    // sales_playbook: playbookRows[0]?.data || null
   };
 
   await pool.query(
@@ -202,16 +211,13 @@ export async function tryCompleteJobByDomain(domain) {
 export async function createJob({
   prospect_domain,
   warmReady,
-  playbookReady
+  // PLAYBOOK DISABLED
+  // playbookReady
 }) {
   const id = uuid();
 
-  const stage =
-    warmReady && !playbookReady
-      ? "playbook"
-      : !warmReady && playbookReady
-      ? "clay_collecting"
-      : "checking";
+  // Simplified stage: only warm connections flow
+  const stage = warmReady ? "completed" : "clay_collecting";
 
   await pool.query(
     `
@@ -223,9 +229,9 @@ export async function createJob({
       warm_connections_ready,
       playbook_ready
     )
-    VALUES ($1, $2, 'running', $3, $4, $5)
+    VALUES ($1, $2, 'running', $3, $4, TRUE)
     `,
-    [id, prospect_domain, stage, warmReady, playbookReady]
+    [id, prospect_domain, stage, warmReady]
   );
 
   return id;
