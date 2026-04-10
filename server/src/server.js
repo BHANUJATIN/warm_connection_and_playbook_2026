@@ -17,6 +17,7 @@ await import("./db/index.js");
 const { default: clayWebhook } = await import("./routes/clayWebhook.js");
 const { default: jobsRouter } = await import("./routes/jobs.js");
 const { default: resultRouter } = await import("./routes/result.js");
+const { default: apiRouter } = await import("./routes/api.js");
 // PLAYBOOK DISABLED
 // const { default: testPlaybook } = await import('./routes/testPlaybook.js');
 
@@ -54,6 +55,7 @@ app.use(cors({
 app.use("/webhooks", clayWebhook);
 app.use("/jobs", jobsRouter);
 app.use("/result", resultRouter);
+app.use("/api", cors({ origin: "*", methods: ["GET", "POST"], allowedHeaders: ["Content-Type", "x-api-key"] }), apiRouter);
 
 app.get("/health", (_, res) => {
   res.json({ status: "ok" });

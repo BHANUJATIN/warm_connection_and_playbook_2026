@@ -77,6 +77,23 @@ export async function getJobByDomain(domain) {
 }
 
 /**
+ * Fetch most recent job for domain regardless of status
+ */
+export async function getLatestJobByDomain(domain) {
+  const { rows } = await pool.query(
+    `
+    SELECT *
+    FROM jobs
+    WHERE prospect_domain = $1
+    ORDER BY created_at DESC
+    LIMIT 1
+    `,
+    [domain]
+  );
+  return rows[0] || null;
+}
+
+/**
  * Check if job is eligible for completion.
  * Now only requires warm_connections to be ready (playbook disabled).
  */
